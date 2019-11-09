@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=DosBox
+Name=DosBox-RG350
 Comment=DOS emulator
 Exec=dosbox %f
 Terminal=false
@@ -8,3 +8,4 @@ MimeType=application/x-ms-dos-executable;application/x-ms-dos-program;applicatio
 StartupNotify=true
 Icon=dosbox
 Categories=emulators;
+X-OD-NeedsDownscaling=true

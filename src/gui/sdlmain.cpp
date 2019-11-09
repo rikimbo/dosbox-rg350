@@ -197,7 +197,6 @@ struct SDL_Block {
 #endif
 	struct {
 		SDL_Surface * surface;
-		SDL_Surface * buffer;
 #if (HAVE_DDRAW_H) && defined(WIN32)
 		RECT rect;
 #endif
@@ -490,10 +489,6 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 		SDL_FreeSurface(sdl.blit.surface);
 		sdl.blit.surface=0;
 	}
-	if (sdl.blit.buffer) {
-		SDL_FreeSurface(sdl.blit.buffer);
-		sdl.blit.buffer=0;
-	}
 	switch (sdl.desktop.want_type) {
 	case SCREEN_SURFACE:
 dosurface:
@@ -578,37 +573,16 @@ dosurface:
 		if (flags & GFX_CAN_32) bpp = 32;
 		sdl.desktop.type = SCREEN_SURFACE_DINGUX;
 
-		sdl.surface=SDL_SetVideoMode(sdl.desktop.full.width,
-									sdl.desktop.full.height,
+		sdl.surface=SDL_SetVideoMode(width,
+									height,
 									sdl.desktop.bpp,
-									(flags & GFX_CAN_RANDOM) ? SDL_SWSURFACE : SDL_HWSURFACE);
+									SDL_HWSURFACE);
 
-		sdl.blit.buffer=SDL_CreateRGBSurface(SDL_SWSURFACE, // for mixing menu and game screen
-									sdl.desktop.full.width,
-									sdl.desktop.full.height,
-									sdl.desktop.bpp,
-									0,0,0,0);
-
-		GFX_PDownscale = NULL;
-		if(width <= sdl.desktop.full.width && height <= sdl.desktop.full.height) {
-			sdl.clip.w=width;
-			sdl.clip.h=height;
-			sdl.clip.x=(Sint16)((sdl.desktop.full.width-width)/2);
-			sdl.clip.y=(Sint16)((sdl.desktop.full.height-height)/2);
-			sdl.blit.surface=SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,bpp,0,0,0,0);
-		} else {
-			sdl.clip.w=0; sdl.clip.h=0; sdl.clip.x=0; sdl.clip.y=0;
-			sdl.blit.surface=SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,bpp,0,0,0,0);
-
-			if(width == 640 && height == 400)
-				GFX_PDownscale = (bpp == 16 ? &GFX_Downscale_640x400_to_320x240_16 : &GFX_Downscale_640x400_to_320x240_32);
-			else if(width == 640 && height == 480)
-				GFX_PDownscale = (bpp == 16 ? &GFX_Downscale_640x480_to_320x240_16 : &GFX_Downscale_640x480_to_320x240_32);
-		}
+		sdl.clip.w=0; sdl.clip.h=0; sdl.clip.x=0; sdl.clip.y=0;
 
 		printf("Mode: %ix%ix%i, Surface %ix%ix%i\n",
-					sdl.desktop.full.width,
-					sdl.desktop.full.height,
+					width,
+					height,
 					sdl.desktop.bpp,
 					width,height,bpp);
 
@@ -623,8 +597,6 @@ dosurface:
                 break;
 			}
 		}
-
-		retFlags |= GFX_SCALING;
 		break;
 #if (HAVE_DDRAW_H) && defined(WIN32)
 	case SCREEN_SURFACE_DDRAW:
@@ -907,16 +879,9 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 		sdl.updating=true;
 		return true;
 	case SCREEN_SURFACE_DINGUX:
-		if (sdl.blit.surface) {
-			pixels=(Bit8u *)sdl.blit.surface->pixels;
-			pitch=sdl.blit.surface->pitch;
-		} else {
-			if (SDL_MUSTLOCK(sdl.surface)) SDL_LockSurface(sdl.surface);
-			pixels=(Bit8u *)sdl.surface->pixels;
-			pixels+=sdl.clip.y*sdl.surface->pitch;
-			pixels+=sdl.clip.x*sdl.surface->format->BytesPerPixel;
-			pitch=sdl.surface->pitch;
-		}
+		if (SDL_MUSTLOCK(sdl.surface)) SDL_LockSurface(sdl.surface);
+		pixels=(Bit8u *)sdl.surface->pixels;
+		pitch=sdl.surface->pitch;
 		sdl.updating=true;
 		return true;
 #if (HAVE_DDRAW_H) && defined(WIN32)
@@ -993,27 +958,10 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 		}
 		break;
 	case SCREEN_SURFACE_DINGUX:
-		if(!vkeyb_active && !vkeyb_last) {
-			if (sdl.blit.surface) {
-				if(GFX_PDownscale) {
-					GFX_PDOWNSCALE(sdl.blit.surface, sdl.surface);
-				} else {
-					SDL_BlitSurface(sdl.blit.surface, 0, sdl.surface, &sdl.clip);
-				} 
-			} else {
-				if(SDL_MUSTLOCK(sdl.surface)) SDL_UnlockSurface(sdl.surface);
-			}
-		} else {
-			// assume that sdl.blit.surface is set
-			if(GFX_PDownscale) {
-				GFX_PDOWNSCALE(sdl.blit.surface, sdl.blit.buffer);
-			} else {
-				SDL_BlitSurface(sdl.blit.surface, 0, sdl.blit.buffer,  &sdl.clip);
-			}
-			VKEYB_BlitVkeyboard(sdl.blit.buffer);
-			SDL_BlitSurface(sdl.blit.buffer, 0, sdl.surface, 0);
-			VKEYB_CleanVkeyboard(sdl.blit.buffer);
+		if(vkeyb_active || vkeyb_last) {
+			VKEYB_BlitVkeyboard(sdl.surface);
 		}
+		if(SDL_MUSTLOCK(sdl.surface)) SDL_UnlockSurface(sdl.surface);
 		SDL_Flip(sdl.surface);
 		break;
 #if (HAVE_DDRAW_H) && defined(WIN32)
@@ -1375,105 +1323,20 @@ static void GUI_StartUp(Section * sec) {
 
 #endif	//OPENGL
 
-	// avoid splash for surface_dingux as it uses big screen
-	if(sdl.desktop.want_type != SCREEN_SURFACE_DINGUX) {
-	/* Initialize screen for first time */
-	sdl.surface=SDL_SetVideoMode(640,400,0,0);
-	if (sdl.surface == NULL) E_Exit("Could not initialize video: %s",SDL_GetError());
-	sdl.desktop.bpp=sdl.surface->format->BitsPerPixel;
-	if (sdl.desktop.bpp==24) {
-		LOG_MSG("SDL:You are running in 24 bpp mode, this will slow down things!");
+	// test which modes are available and fill sdl.desktop data
+	sdl.desktop.bpp = SDL_VideoModeOK(320,240,16,SDL_HWSURFACE); // let SDL choose bpp
+	if(!sdl.desktop.full.fixed) { // i.e. fullresolution=original
+		sdl.desktop.fullscreen = true;
+		sdl.desktop.full.fixed = true;
+		sdl.desktop.full.width = 320;
+		sdl.desktop.full.height = 240;
 	}
-	GFX_Stop();
-	SDL_WM_SetCaption("DOSBox",VERSION);
-
-/* The endian part is intentionally disabled as somehow it produces correct results without according to rhoenie*/
-//#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-//    Bit32u rmask = 0xff000000;
-//    Bit32u gmask = 0x00ff0000;
-//    Bit32u bmask = 0x0000ff00;
-//#else
-    Bit32u rmask = 0x000000ff;
-    Bit32u gmask = 0x0000ff00;
-    Bit32u bmask = 0x00ff0000;
-//#endif
-
-/* Please leave the Splash screen stuff in working order in DOSBox. We spend a lot of time making DOSBox. */
-	SDL_Surface* splash_surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, rmask, gmask, bmask, 0);
-	if (splash_surf) {
-		SDL_FillRect(splash_surf, NULL, SDL_MapRGB(splash_surf->format, 0, 0, 0));
-
-		Bit8u* tmpbufp = new Bit8u[640*400*3];
-		GIMP_IMAGE_RUN_LENGTH_DECODE(tmpbufp,gimp_image.rle_pixel_data,640*400,3);
-		for (Bitu y=0; y<400; y++) {
-
-			Bit8u* tmpbuf = tmpbufp + y*640*3;
-			Bit32u * draw=(Bit32u*)(((Bit8u *)splash_surf->pixels)+((y)*splash_surf->pitch));
-			for (Bitu x=0; x<640; x++) {
-//#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-//				*draw++ = tmpbuf[x*3+2]+tmpbuf[x*3+1]*0x100+tmpbuf[x*3+0]*0x10000+0x00000000;
-//#else
-				*draw++ = tmpbuf[x*3+0]+tmpbuf[x*3+1]*0x100+tmpbuf[x*3+2]*0x10000+0x00000000;
-//#endif
-			}
-		}
-
-		bool exit_splash = false;
-
-		static Bitu max_splash_loop = 600;
-		static Bitu splash_fade = 100;
-		static bool use_fadeout = true;
-
-		for (Bit32u ct = 0,startticks = GetTicks();ct < max_splash_loop;ct = GetTicks()-startticks) {
-			SDL_Event evt;
-			while (SDL_PollEvent(&evt)) {
-				if (evt.type == SDL_QUIT) {
-					exit_splash = true;
-					break;
-				}
-			}
-			if (exit_splash) break;
-
-			if (ct<1) {
-				SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
-				SDL_SetAlpha(splash_surf, SDL_SRCALPHA,255);
-				SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
-				SDL_Flip(sdl.surface);
-			} else if (ct>=max_splash_loop-splash_fade) {
-				if (use_fadeout) {
-					SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
-					SDL_SetAlpha(splash_surf, SDL_SRCALPHA, (Bit8u)((max_splash_loop-1-ct)*255/(splash_fade-1)));
-					SDL_BlitSurface(splash_surf, NULL, sdl.surface, NULL);
-					SDL_Flip(sdl.surface);
-				}
-			}
-
-		}
-
-		if (use_fadeout) {
-			SDL_FillRect(sdl.surface, NULL, SDL_MapRGB(sdl.surface->format, 0, 0, 0));
-			SDL_Flip(sdl.surface);
-		}
-		SDL_FreeSurface(splash_surf);
-		delete [] tmpbufp;
-
-	}
-	} else { // sdl.desktop.want_type != SCREEN_SURFACE_DINGUX
-		// test which modes are available and fill sdl.desktop data
-		sdl.desktop.bpp = SDL_VideoModeOK(320,240,16,SDL_HWSURFACE); // let SDL choose bpp
-		if(!sdl.desktop.full.fixed) { // i.e. fullresolution=original
-			sdl.desktop.fullscreen = true;
-			sdl.desktop.full.fixed = true;
-			sdl.desktop.full.width = 320;
-			sdl.desktop.full.height = 240;
-		}
-		#ifndef WIN32 // for testing on win
-		sdl.mouse.autoenable = false;
-		sdl.mouse.autolock = true;
-		GFX_CaptureMouse();
-		#endif
-		VKEYB_Init(sdl.desktop.bpp);
-	}
+	#ifndef WIN32 // for testing on win
+	sdl.mouse.autoenable = false;
+	sdl.mouse.autolock = true;
+	GFX_CaptureMouse();
+	#endif
+	VKEYB_Init(sdl.desktop.bpp);
 
 	/* Get some Event handlers */
 	MAPPER_AddHandler(KillSwitch,MK_f9,MMOD1,"shutdown","ShutDown");

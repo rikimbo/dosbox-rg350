@@ -1,6 +1,6 @@
 #!/bin/sh
 
-./configure --host=mipsel-linux --disable-opengl --disable-alsa-midi --disable-dynamic-x86 --disable-fpu-x86 --enable-core-inline CXXFLAGS="-g -O2 -G0 -march=mips32 -mtune=mips32 -pipe -fno-builtin -fno-common -mno-shared -ffast-math -fomit-frame-pointer -fexpensive-optimizations -frename-registers" LIBS="-lSDL_gfx -lSDL_image"
+./configure --host=mipsel-linux --with-sdl-exec-prefix=`mipsel-linux-gcc -print-sysroot`/usr --disable-opengl --disable-alsa-midi --disable-dynamic-x86 --disable-fpu-x86 --enable-core-inline CXXFLAGS="-g -O4 -G0 -mips32r2 -pipe -fno-builtin -fno-common -mno-shared -ffast-math -fomit-frame-pointer -fexpensive-optimizations -frename-registers" LIBS="-lSDL_gfx -lSDL_image"
 
 OLD="\/\* #undef C_ATTRIBUTE_ALWAYS_INLINE \*\/"
 NEW="#define C_ATTRIBUTE_ALWAYS_INLINE 1"
