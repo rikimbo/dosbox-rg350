@@ -1350,12 +1350,12 @@ static void GUI_StartUp(Section * sec) {
 #endif	//OPENGL
 
 	// test which modes are available and fill sdl.desktop data
-	sdl.desktop.bpp = SDL_VideoModeOK(320,240,16,SDL_HWSURFACE); // let SDL choose bpp
+	sdl.desktop.bpp = SDL_VideoModeOK(640,480,16,SDL_HWSURFACE); // let SDL choose bpp
 	if(!sdl.desktop.full.fixed) { // i.e. fullresolution=original
 		sdl.desktop.fullscreen = true;
 		sdl.desktop.full.fixed = true;
-		sdl.desktop.full.width = 320;
-		sdl.desktop.full.height = 240;
+		sdl.desktop.full.width = 640;
+		sdl.desktop.full.height = 480;
 	}
 	#ifndef WIN32 // for testing on win
 	sdl.mouse.autoenable = false;
