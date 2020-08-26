@@ -197,6 +197,7 @@ struct SDL_Block {
 #endif
 	struct {
 		SDL_Surface * surface;
+	  	SDL_Surface * buffer;
 #if (HAVE_DDRAW_H) && defined(WIN32)
 		RECT rect;
 #endif
@@ -489,6 +490,10 @@ Bitu GFX_SetSize(Bitu width,Bitu height,Bitu flags,double scalex,double scaley,G
 		SDL_FreeSurface(sdl.blit.surface);
 		sdl.blit.surface=0;
 	}
+	if (sdl.blit.buffer) {
+		SDL_FreeSurface(sdl.blit.buffer);
+		sdl.blit.buffer=0;
+	}
 	switch (sdl.desktop.want_type) {
 	case SCREEN_SURFACE:
 dosurface:
@@ -577,9 +582,16 @@ dosurface:
 									height,
 									sdl.desktop.bpp,
 									SDL_HWSURFACE);
-
+		
+		sdl.blit.buffer=SDL_CreateRGBSurface(SDL_SWSURFACE, // for mixing menu and game screen
+									width,
+									height,
+									sdl.desktop.bpp,
+									0,0,0,0);		
+		
 		sdl.clip.w=0; sdl.clip.h=0; sdl.clip.x=0; sdl.clip.y=0;
-
+		sdl.blit.surface=SDL_CreateRGBSurface(SDL_SWSURFACE,width,height,bpp,0,0,0,0);
+		
 		printf("Mode: %ix%ix%i, Surface %ix%ix%i\n",
 					width,
 					height,
@@ -879,9 +891,14 @@ bool GFX_StartUpdate(Bit8u * & pixels,Bitu & pitch) {
 		sdl.updating=true;
 		return true;
 	case SCREEN_SURFACE_DINGUX:
-		if (SDL_MUSTLOCK(sdl.surface)) SDL_LockSurface(sdl.surface);
-		pixels=(Bit8u *)sdl.surface->pixels;
-		pitch=sdl.surface->pitch;
+	  	if (sdl.blit.surface) {
+			pixels=(Bit8u *)sdl.blit.surface->pixels;
+			pitch=sdl.blit.surface->pitch;
+		} else {
+			if (SDL_MUSTLOCK(sdl.surface)) SDL_LockSurface(sdl.surface);
+			pixels=(Bit8u *)sdl.surface->pixels;
+			pitch=sdl.surface->pitch;
+		}
 		sdl.updating=true;
 		return true;
 #if (HAVE_DDRAW_H) && defined(WIN32)
@@ -958,10 +975,19 @@ void GFX_EndUpdate( const Bit16u *changedLines ) {
 		}
 		break;
 	case SCREEN_SURFACE_DINGUX:
-		if(vkeyb_active || vkeyb_last) {
-			VKEYB_BlitVkeyboard(sdl.surface);
+        	if(!vkeyb_active && !vkeyb_last) {
+			if (sdl.blit.surface) {
+			        SDL_BlitSurface(sdl.blit.surface, 0, sdl.surface, &sdl.clip);
+			} else {
+				if(SDL_MUSTLOCK(sdl.surface)) SDL_UnlockSurface(sdl.surface);
+			}
+		} else {
+			// assume that sdl.blit.surface is set
+			SDL_BlitSurface(sdl.blit.surface, 0, sdl.blit.buffer,  &sdl.clip);
+			VKEYB_BlitVkeyboard(sdl.blit.buffer);
+			SDL_BlitSurface(sdl.blit.buffer, 0, sdl.surface, 0);
+			VKEYB_CleanVkeyboard(sdl.blit.buffer);
 		}
-		if(SDL_MUSTLOCK(sdl.surface)) SDL_UnlockSurface(sdl.surface);
 		SDL_Flip(sdl.surface);
 		break;
 #if (HAVE_DDRAW_H) && defined(WIN32)
